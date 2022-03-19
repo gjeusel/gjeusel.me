@@ -3,13 +3,14 @@
 // you can use this to manipulate the document head in any components,
 // they will be rendered correctly in the html results with vite-ssg
 useHead({
-  title: 'Vitesse',
-  meta: [
-    { name: 'description', content: 'Opinionated Vite Starter Template' },
-  ],
-})
+  title: "Guillaume Jeusel",
+  meta: [{ name: "description", content: "Personal Blog." }],
+});
 </script>
 
 <template>
-  <router-view />
+  <main class="text-gray-700 dark:text-gray-200">
+    <NavBar class="sticky" />
+    <router-view />
+  </main>
 </template>
