@@ -5,4 +5,5 @@
       [Home Layout]
     </div>
   </div>
+  <Footer />
 </template>
