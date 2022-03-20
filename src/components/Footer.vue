@@ -46,7 +46,7 @@ const opts: Opts = {
   color: "#88888825",
   splitRad: cst.r15,
   //
-  maxBranches: 1000,
+  maxBranches: size.width * 4,
 };
 
 function initCanvas(
@@ -91,7 +91,7 @@ function polar2cart(x = 0, y = 0, r = 0, theta = 0) {
 
 const isInRadBounds = (rad: number, initialRad: number) => {
   return (
-    initialRad - 4 * opts.splitRad < rad && rad < initialRad + 3 * opts.splitRad
+    initialRad - 3 * opts.splitRad < rad && rad < initialRad + 3 * opts.splitRad
   );
 };
 
@@ -111,7 +111,7 @@ onMounted(() => {
   let lastTime = performance.now(); // keep track of time
 
   const stepPlum = (x: number, y: number, rad: number, state: State) => {
-    if (state.nbranches > opts.maxBranches) return
+    if (state.nbranches > opts.maxBranches) return;
 
     const [nx, ny] = polar2cart(x, y, random() * opts.stepSize, rad);
 
@@ -128,9 +128,6 @@ onMounted(() => {
       ? rad - radStep
       : rad + 3 * radStep;
 
-    // const rad1 = rad + random() * opts.splitRad;
-    // const rad2 = rad - random() * opts.splitRad;
-
     [rad1, rad2].forEach((r) => {
       const canExpand = state.nbranches <= opts.decay || random() > 0.5;
       if (canExpand) {
@@ -139,7 +136,9 @@ onMounted(() => {
     });
 
     if (!state.steps.length) {
-      state.steps.push(() => stepPlum(nx, ny, state.initialRad, state));
+      state.steps.push(() =>
+        stepPlum(nx, ny, state.initialRad, state)
+      );
     }
   };
 
@@ -157,8 +156,8 @@ onMounted(() => {
   let controls: ReturnType<typeof useRafFn>;
 
   let states = [
-    getInitialState(size.width, size.height - random() * 100, -cst.r180),
-    getInitialState(0, size.height - random() * 100, 0),
+    getInitialState(size.width, size.height - 100, -cst.r180),
+    getInitialState(0, size.height - 100, 0),
   ];
 
   const frame = () => {
