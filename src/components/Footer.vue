@@ -1,9 +1,163 @@
+<script setup lang="ts">
+// Highly inspired from https://github.com/antfu/plum-demo
+
+const canvas = $ref<HTMLCanvasElement>()
+const { width, height } = useWindowSize()
+
+const ctx = $computed(() => canvas!.getContext("2d")!)
+
+const opts = {
+  color: "#88888825", // line color
+  //
+  decay: 3, // number of splits before considering to stop
+  stepSize: 6, // distance
+  splitRad: Math.PI / 12, // angle at splitting
+}
+
+interface Point {
+  x: number
+  y: number
+}
+
+interface Branch {
+  start: Point
+  length: number
+  theta: number
+}
+
+interface DrawingState {
+  depth: number // current number of branches for drawing
+  initTheta: number // keep track of global direction
+  pendingTasks: Function[] // steps pending for next frame
+}
+
+function drawLine(start: Point, end: Point) {
+  ctx.beginPath()
+  ctx.moveTo(start.x, start.y)
+  ctx.lineTo(end.x, end.y)
+  ctx.stroke()
+}
+
+function step(b: Branch, state: DrawingState) {
+  const end: Point = {
+    x: b.start.x + b.length * Math.cos(b.theta),
+    y: b.start.y + b.length * Math.sin(b.theta),
+  }
+
+  drawLine(b.start, end)
+
+  function getThetaInBounds(theta: number, noise: number): number {
+    const isInBounds =
+      state.initTheta - 3 * opts.splitRad < theta + noise &&
+      theta + noise < state.initTheta + 3 * opts.splitRad
+
+    return isInBounds ? theta + noise : theta - 3 * noise
+  }
+
+  const theta1 = getThetaInBounds(b.theta, Math.random() * opts.splitRad)
+  const theta2 = getThetaInBounds(b.theta, -Math.random() * opts.splitRad)
+
+  const thetas = [theta1, theta2]
+
+  thetas.forEach((theta) => {
+    if (state.depth < 4 || Math.random() < 0.5) {
+      state.depth += 1
+      state.pendingTasks.push(() =>
+        step(
+          {
+            start: end,
+            length: Math.random() * opts.stepSize,
+            theta,
+          },
+          state,
+        ),
+      )
+    }
+  })
+
+  if (!state.pendingTasks.length) {
+    state.depth += 1
+    state.pendingTasks.push(() =>
+      step({ start: end, length: b.length, theta: state.initTheta }, state),
+    )
+  }
+}
+
+onMounted(() => {
+  watchEffect(() => {
+    const dpr = window.devicePixelRatio || 1
+    const bsr = 1 // backing store pixel ratio
+    const dpi = dpr / bsr
+
+    // Set canvas style
+    canvas.style.width = `${width.value}px`
+    canvas.style.height = `${height.value}px`
+
+    canvas.width = dpi * width.value
+    canvas.height = dpi * height.value
+  })
+
+  const maxBranches = width.value * 2 // max number of branches generated
+
+  // Set color of stroke
+  ctx.strokeStyle = opts.color
+
+  const drawings = [
+    { x: canvas.width, y: canvas.height - 100, theta: -Math.PI },
+    { x: 0, y: canvas.height - 100, theta: 0 },
+  ]
+  const initDrawings: { branch: Branch; state: DrawingState }[] = drawings.map(
+    (cfg) => ({
+      branch: {
+        start: { x: cfg.x, y: cfg.y },
+        length: opts.stepSize,
+        theta: cfg.theta,
+      },
+      state: { depth: 0, initTheta: cfg.theta, pendingTasks: [] },
+    }),
+  )
+  const initStates = initDrawings.map((e) => e.state)
+
+  function frame() {
+    const tasks: Function[] = []
+    initStates.forEach((state) => {
+      state.pendingTasks = state.pendingTasks.filter((fn) => {
+        if (Math.random() > 0.4) {
+          tasks.push(fn)
+          return false
+        }
+        return true
+      })
+    })
+
+    tasks.forEach((fn) => fn())
+  }
+
+  function startFrame() {
+    // Check if all done
+    const allDone = initStates.reduce(
+      (agg, state) => (agg = agg && maxBranches < state.depth),
+      true,
+    )
+    if (allDone) return
+
+    requestAnimationFrame(() => {
+      frame()
+      startFrame()
+    })
+  }
+
+  initDrawings.forEach((cfg) => step(cfg.branch, cfg.state))
+  startFrame()
+})
+</script>
+
 <template>
   <div
     class="fixed top-0 bottom-0 left-0 right-0 pointer-events-none"
     style="z-index: -1"
   >
-    <canvas ref="el" width="400" height="400" />
+    <canvas ref="canvas" width="400" height="400" />
   </div>
 
   <div class="fixed w-full bottom-3 font-thin text-xs opacity-40">
@@ -15,196 +169,3 @@
     </p>
   </div>
 </template>
-
-<script setup="props" lang="ts">
-import { Fn } from "@vueuse/core"
-const { random } = Math
-
-const el = ref<HTMLCanvasElement | null>(null)
-const size = reactive(useWindowSize())
-
-const cst = {
-  r15: Math.PI / 12,
-  r90: Math.PI / 2,
-  r180: Math.PI,
-  //
-  fps: 40, // refresh rate
-}
-
-interface Opts {
-  decay: number // number of splits before considering to stop
-  stepSize: number // distance
-  color: string // line color
-  splitRad: number // angle at splitting
-
-  maxBranches: number // max number of branches generated
-}
-
-const opts: Opts = {
-  decay: 3,
-  stepSize: 6,
-  color: "#88888825",
-  splitRad: cst.r15,
-  //
-  maxBranches: size.width * 4,
-}
-
-function initCanvas(
-  canvas: HTMLCanvasElement,
-  width = 400,
-  height = 400,
-  _dpi?: number,
-) {
-  const ctx = canvas.getContext("2d")!
-
-  const dpr = window.devicePixelRatio || 1
-
-  const bsr =
-    // @ts-ignore
-    ctx.webkitBackingStorePixelRatio ||
-    // @ts-ignore
-    ctx.mozBackingStorePixelRatio ||
-    // @ts-ignore
-    ctx.msBackingStorePixelRatio ||
-    // @ts-ignore
-    ctx.oBackingStorePixelRatio ||
-    // @ts-ignore
-    ctx.backingStorePixelRatio ||
-    1
-
-  const dpi = _dpi || dpr / bsr
-
-  canvas.style.width = `${width}px`
-  canvas.style.height = `${height}px`
-  canvas.width = dpi * width
-  canvas.height = dpi * height
-  ctx.scale(dpi, dpi)
-
-  return { ctx, dpi }
-}
-
-function polar2cart(x = 0, y = 0, r = 0, theta = 0) {
-  const dx = r * Math.cos(theta)
-  const dy = r * Math.sin(theta)
-  return [x + dx, y + dy]
-}
-
-const isInRadBounds = (rad: number, initialRad: number) => {
-  return (
-    initialRad - 3 * opts.splitRad < rad && rad < initialRad + 3 * opts.splitRad
-  )
-}
-
-interface State {
-  nbranches: number // current number of branches
-  initialRad: number // keep track of global direction
-  steps: Fn[] // new steps to execute
-  prevSteps: Fn[] // steps to execute
-}
-
-onMounted(() => {
-  const canvas = el.value!
-
-  const { ctx } = initCanvas(canvas, size.width, size.height)
-  const { width, height } = canvas
-
-  let lastTime = performance.now() // keep track of time
-
-  const stepPlum = (x: number, y: number, rad: number, state: State) => {
-    if (state.nbranches > opts.maxBranches) return
-
-    const [nx, ny] = polar2cart(x, y, random() * opts.stepSize, rad)
-
-    ctx.beginPath()
-    ctx.moveTo(x, y)
-    ctx.lineTo(nx, ny)
-    ctx.stroke()
-
-    const radStep = random() * opts.splitRad
-    const rad1 = isInRadBounds(rad + radStep, state.initialRad)
-      ? rad + radStep
-      : rad - 3 * radStep
-    const rad2 = isInRadBounds(rad - radStep, state.initialRad)
-      ? rad - radStep
-      : rad + 3 * radStep
-
-    ;[rad1, rad2].forEach((r) => {
-      const canExpand = state.nbranches <= opts.decay || random() > 0.5
-      if (canExpand) {
-        state.steps.push(() => stepPlum(nx, ny, r, state))
-      }
-    })
-
-    if (!state.steps.length) {
-      state.steps.push(() => stepPlum(nx, ny, state.initialRad, state))
-    }
-  }
-
-  const getInitialState = (x: number, y: number, rad: number): State => {
-    const state = {
-      nbranches: 0,
-      initialRad: rad,
-      steps: [] as Fn[],
-      prevSteps: [] as Fn[],
-    }
-    state.steps.push(() => stepPlum(x, y, rad, state))
-    return state
-  }
-
-  let controls: ReturnType<typeof useRafFn>
-
-  let states = [
-    getInitialState(size.width, size.height - 100, -cst.r180),
-    getInitialState(0, size.height - 100, 0),
-  ]
-
-  const frame = () => {
-    if (cst.fps < 1000 / (performance.now() - lastTime)) return
-    lastTime = performance.now()
-
-    const totalSteps = states.reduce(
-      (agg, state) => (agg += state.steps.length),
-      0,
-    )
-    const allDone = states.reduce(
-      (agg, state) => (agg = agg && opts.maxBranches < state.nbranches),
-      true,
-    )
-
-    if (!totalSteps || allDone) {
-      states.forEach((state) => {
-        console.debug(
-          `Stopped after ${state.nbranches}/${opts.maxBranches} branches.`,
-        )
-      })
-      controls.pause()
-    }
-
-    states.forEach((state) => {
-      state.nbranches += state.steps.length
-
-      state.prevSteps = state.steps
-      state.steps = []
-      state.prevSteps.forEach((i) => i())
-    })
-  }
-
-  controls = useRafFn(frame, { immediate: false })
-
-  const trigger = () => {
-    // Cleanup & init
-    controls.pause()
-    ctx.clearRect(0, 0, width, height)
-    ctx.lineWidth = 1
-    ctx.strokeStyle = opts.color
-
-    // Object.keys(state.draws).forEach(
-    //   (label) => (state.draws[label].prevSteps = [])
-    // );
-
-    controls.resume()
-  }
-
-  trigger()
-})
-</script>

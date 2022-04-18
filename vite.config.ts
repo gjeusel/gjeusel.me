@@ -28,6 +28,7 @@ export default defineConfig({
   },
   plugins: [
     Vue({
+      reactivityTransform: true,
       include: [/\.vue$/, /\.md$/],
     }),
 
@@ -51,6 +52,7 @@ export default defineConfig({
       imports: [
         "vue",
         "vue-router",
+        "vue/macros",
         "vue-i18n",
         "@vueuse/head",
         "@vueuse/core",
@@ -140,7 +142,7 @@ export default defineConfig({
   },
 
   optimizeDeps: {
-    include: ["vue", "vue-router", "@vueuse/core", "@vueuse/head"],
+    include: ["vue", "vue-router", "@vueuse/core", "@vueuse/head", "vue/macros"],
     exclude: ["vue-demi"],
   },
 
